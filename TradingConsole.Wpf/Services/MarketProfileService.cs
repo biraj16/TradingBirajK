@@ -101,16 +101,35 @@ namespace TradingConsole.Wpf.Services
 
         private void PruneAndSummarizeDatabase()
         {
-            var tenDaysAgo = DateTime.Today.AddDays(-10);
-            var twoDaysAgo = DateTime.Today.AddDays(-2);
+            // --- THE FIX: Make pruning logic aware of trading days ---
+
+            // Get the last 10 valid trading days from today.
+            var recentTradingDays = new List<DateTime>();
+            var currentDate = DateTime.Today;
+            while (recentTradingDays.Count < 10)
+            {
+                if (currentDate.DayOfWeek != DayOfWeek.Saturday && currentDate.DayOfWeek != DayOfWeek.Sunday)
+                {
+                    // In a more advanced implementation, you would also check against a list of market holidays.
+                    recentTradingDays.Add(currentDate);
+                }
+                currentDate = currentDate.AddDays(-1);
+            }
+
+            var tenTradingDaysAgo = recentTradingDays.Last();
+            var threeTradingDaysAgo = recentTradingDays.ElementAtOrDefault(3); // The third most recent trading day.
 
             foreach (var key in _database.Records.Keys.ToList())
             {
                 var records = _database.Records[key];
-                records.RemoveAll(r => r.Date < tenDaysAgo);
+
+                // 1. Remove any records that are older than the last 10 trading days.
+                records.RemoveAll(r => r.Date < tenTradingDaysAgo);
+
+                // 2. For records older than the last 3 trading days, remove detailed volume data.
                 foreach (var record in records)
                 {
-                    if (record.Date < twoDaysAgo)
+                    if (threeTradingDaysAgo != default && record.Date < threeTradingDaysAgo)
                     {
                         record.TpoCounts = null;
                         record.VolumeLevels = null;

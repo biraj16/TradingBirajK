@@ -43,7 +43,7 @@ namespace TradingConsole.Core.Models
                 }
                 else if (Quantity < 0) // Short position
                 {
-                    return System.Math.Abs(Quantity) * (AveragePrice - LastTradedPrice);
+                    return Math.Abs(Quantity) * (AveragePrice - LastTradedPrice);
                 }
                 else
                 {

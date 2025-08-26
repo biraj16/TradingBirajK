@@ -64,7 +64,7 @@ namespace TradingConsole.Wpf.Services
             else _stateManager.CurrentMarketPhase = MarketPhase.Normal;
         }
 
-        public void OnInstrumentDataReceived(DashboardInstrument instrument, decimal underlyingPrice)
+        public async void OnInstrumentDataReceived(DashboardInstrument instrument, decimal underlyingPrice)
         {
             var lastTradeDateTime = DateTimeOffset.FromUnixTimeSeconds(instrument.LastTradeTime).UtcDateTime;
             if ((DateTime.UtcNow - lastTradeDateTime).TotalSeconds > 15 && IsMarketOpen()) // Only check for stale data if market is open
@@ -80,7 +80,8 @@ namespace TradingConsole.Wpf.Services
 
             if (!_stateManager.BackfilledInstruments.Contains(instrument.SecurityId))
             {
-                InitializeNewInstrument(instrument);
+                // We now 'await' the initialization to ensure it completes first
+                await InitializeNewInstrument(instrument);
             }
 
             _signalGenerationService.UpdateIvMetrics(instrument, underlyingPrice);
@@ -178,7 +179,7 @@ namespace TradingConsole.Wpf.Services
         #region Boilerplate and other methods
         public bool IsMarketOpen() { try { var istZone = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"); var istNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, istZone); if (istNow.DayOfWeek == DayOfWeek.Saturday || istNow.DayOfWeek == DayOfWeek.Sunday) return false; if (_settingsViewModel.MarketHolidays.Contains(istNow.Date)) return false; var marketOpen = new TimeSpan(9, 15, 0); var marketClose = new TimeSpan(15, 30, 0); if (istNow.TimeOfDay < marketOpen || istNow.TimeOfDay > marketClose) return false; return true; } catch (TimeZoneNotFoundException) { Debug.WriteLine("WARNING: India Standard Time zone not found."); var now = DateTime.UtcNow; if (now.DayOfWeek == DayOfWeek.Saturday || now.DayOfWeek == DayOfWeek.Sunday) return false; return true; } }
 
-        private void InitializeNewInstrument(DashboardInstrument instrument)
+        private async Task InitializeNewInstrument(DashboardInstrument instrument)
         {
             _stateManager.InitializeStateForInstrument(instrument.SecurityId, instrument.DisplayName, instrument.InstrumentType, instrument.UnderlyingSymbol);
             _stateManager.HistoricalMarketProfiles[instrument.SecurityId] = _marketProfileService.GetHistoricalProfiles(instrument.SecurityId);
@@ -194,8 +195,13 @@ namespace TradingConsole.Wpf.Services
                 _stateManager.MarketProfiles[instrument.SecurityId] = new MarketProfile(tickSize, startTime);
             }
             LoadIndicatorStateFromStorage(instrument.SecurityId);
-            Task.Run(() => BackfillAndSavePreviousDayProfileAsync(instrument));
-            Task.Run(() => BackfillCurrentDayCandlesAsync(instrument));
+
+            // This is the key change: we now await the result of the backfill.
+            await BackfillAndSavePreviousDayProfileAsync(instrument);
+
+            // This can still run in the background as it's less critical for the initial signals
+            _ = BackfillCurrentDayCandlesAsync(instrument);
+
             RunDailyBiasAnalysis(instrument);
         }
 
@@ -291,6 +297,11 @@ namespace TradingConsole.Wpf.Services
         }
         private async Task BackfillAndSavePreviousDayProfileAsync(DashboardInstrument instrument)
         {
+            bool isNiftyRelated = instrument.Symbol == "Nifty 50" || instrument.UnderlyingSymbol == "NIFTY";
+            if (!isNiftyRelated)
+            {
+                return; // Exit if not a Nifty instrument
+            }
             var istNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"));
             DateTime dateToFetch = GetPreviousTradingDay(istNow);
 
@@ -368,6 +379,11 @@ namespace TradingConsole.Wpf.Services
 
         private void UpdateMarketProfileForCandle(DashboardInstrument instrument, Candle lastClosedCandle)
         {
+            bool isNiftyRelated = instrument.Symbol == "Nifty 50" || instrument.UnderlyingSymbol == "NIFTY";
+            if (!isNiftyRelated)
+            {
+                return; // Exit the method if the instrument is not Nifty or Nifty Futures
+            }
             if (_stateManager.MarketProfiles.TryGetValue(instrument.SecurityId, out var directProfile))
             {
                 directProfile.UpdateInitialBalance(lastClosedCandle);
@@ -426,6 +442,15 @@ namespace TradingConsole.Wpf.Services
             foreach (var profileEntry in _stateManager.MarketProfiles)
             {
                 var securityId = profileEntry.Key;
+                var instrument = _instrumentCache.GetValueOrDefault(securityId);
+                if (instrument != null)
+                {
+                    bool isNiftyRelated = instrument.Symbol == "Nifty 50" || instrument.UnderlyingSymbol == "NIFTY";
+                    if (!isNiftyRelated)
+                    {
+                        continue; // Skip saving if not a Nifty instrument
+                    }
+                }
                 var liveProfile = profileEntry.Value;
 
                 var profileDataToSave = liveProfile.ToMarketProfileData();
