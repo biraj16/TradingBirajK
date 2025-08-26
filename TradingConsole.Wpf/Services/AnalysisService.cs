@@ -297,7 +297,8 @@ namespace TradingConsole.Wpf.Services
         }
         private async Task BackfillAndSavePreviousDayProfileAsync(DashboardInstrument instrument)
         {
-            bool isNiftyRelated = instrument.Symbol == "Nifty 50" || instrument.UnderlyingSymbol == "NIFTY";
+            bool isNiftyRelated = (instrument.InstrumentType == "INDEX" && instrument.Symbol == "Nifty 50") ||
+                                  (instrument.InstrumentType == "FUTIDX" && instrument.UnderlyingSymbol == "NIFTY");
             if (!isNiftyRelated)
             {
                 return; // Exit if not a Nifty instrument
@@ -379,7 +380,8 @@ namespace TradingConsole.Wpf.Services
 
         private void UpdateMarketProfileForCandle(DashboardInstrument instrument, Candle lastClosedCandle)
         {
-            bool isNiftyRelated = instrument.Symbol == "Nifty 50" || instrument.UnderlyingSymbol == "NIFTY";
+            bool isNiftyRelated = (instrument.InstrumentType == "INDEX" && instrument.Symbol == "Nifty 50") ||
+                                  (instrument.InstrumentType == "FUTIDX" && instrument.UnderlyingSymbol == "NIFTY");
             if (!isNiftyRelated)
             {
                 return; // Exit the method if the instrument is not Nifty or Nifty Futures
@@ -439,22 +441,33 @@ namespace TradingConsole.Wpf.Services
         }
         public void SaveLiveMarketProfiles()
         {
-            foreach (var profileEntry in _stateManager.MarketProfiles)
+            // --- FIX: Create a thread-safe copy of the dictionary to prevent modification during enumeration ---
+            var profilesToSave = _stateManager.MarketProfiles.ToList();
+
+            foreach (var profileEntry in profilesToSave) // Now iterating over the safe copy
             {
                 var securityId = profileEntry.Key;
                 var instrument = _instrumentCache.GetValueOrDefault(securityId);
+
                 if (instrument != null)
                 {
-                    bool isNiftyRelated = instrument.Symbol == "Nifty 50" || instrument.UnderlyingSymbol == "NIFTY";
+                    bool isNiftyRelated = (instrument.InstrumentType == "INDEX" && instrument.Symbol == "Nifty 50") ||
+                                          (instrument.InstrumentType == "FUTIDX" && instrument.UnderlyingSymbol == "NIFTY");
+
                     if (!isNiftyRelated)
                     {
                         continue; // Skip saving if not a Nifty instrument
                     }
                 }
+                else
+                {
+                    // If the instrument isn't in our cache, we can't verify it.
+                    // It's safer to skip than to save a potentially unwanted profile.
+                    continue;
+                }
+
                 var liveProfile = profileEntry.Value;
-
                 var profileDataToSave = liveProfile.ToMarketProfileData();
-
                 _marketProfileService.UpdateProfile(securityId, profileDataToSave);
             }
         }
