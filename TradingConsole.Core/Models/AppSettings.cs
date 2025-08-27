@@ -54,6 +54,7 @@ namespace TradingConsole.Core.Models
             TrendingBullDrivers = new ObservableCollection<SignalDriver>
             {
                 // new SignalDriver("Confluence Momentum (Bullish)", 10),
+                new SignalDriver("Bullish Trend Continuation", 10),
                 new SignalDriver("Price above VWAP", 4),                  
                 new SignalDriver("5m EMA confirms bullish trend", 4),     
                 new SignalDriver("Institutional Intent is Bullish", 2),
@@ -72,6 +73,7 @@ namespace TradingConsole.Core.Models
             TrendingBearDrivers = new ObservableCollection<SignalDriver>
             {
                 // new SignalDriver("Confluence Momentum (Bearish)", -10),
+                new SignalDriver("Bearish Trend Continuation", -10),
                 new SignalDriver("Price above VWAP", -4),
                 new SignalDriver("5m EMA confirms bullish trend", -4),
                 new SignalDriver("Institutional Intent is Bullish", -2),

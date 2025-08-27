@@ -103,6 +103,16 @@ namespace TradingConsole.Wpf.ViewModels
         private string _microFlowSignal = "Building...";
         public string MicroFlowSignal { get => _microFlowSignal; set => SetSignalProperty(ref _microFlowSignal, value); }
         public string MicroFlowSignalStability => GetStabilityText(nameof(MicroFlowSignal));
+        /// <summary>
+        /// Stores the last primary signal that had high conviction (e.g., "Bullish" or "Bearish").
+        /// This allows the system to look for continuation signals.
+        /// </summary>
+        public string ActiveThesis { get; set; } = "Neutral";
+
+        /// <summary>
+        /// The price at which the last high-conviction ActiveThesis was established.
+        /// </summary>
+        public decimal ActiveThesisEntryPrice { get; set; } = 0;
 
 
         private string _instrumentGroup = string.Empty;

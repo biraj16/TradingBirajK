@@ -63,6 +63,21 @@ namespace TradingConsole.Wpf.Services
                 else if (conviction <= -3) newPrimarySignal = "Bearish";
             }
 
+            // --- NEW LOGIC: Latch the Active Thesis on a high-conviction signal ---
+            // If we get a new high-conviction signal, we set it as the active thesis.
+            if ((conviction >= 7 && result.ActiveThesis != "Bullish") ||
+                (conviction <= -7 && result.ActiveThesis != "Bearish"))
+            {
+                result.ActiveThesis = newPrimarySignal;
+                result.ActiveThesisEntryPrice = result.LTP;
+            }
+            // If conviction drops back to neutral, we reset the thesis.
+            else if (conviction > -3 && conviction < 3)
+            {
+                result.ActiveThesis = "Neutral";
+                result.ActiveThesisEntryPrice = 0;
+            }
+
             string oldPrimarySignal = result.PrimarySignal;
             result.PrimarySignal = newPrimarySignal;
             result.FinalTradeSignal = playbook;
@@ -274,6 +289,19 @@ namespace TradingConsole.Wpf.Services
                 // **IMPROVEMENT**: Robust logic for Volume Burst, independent of VWAP.
                 case "Bullish Breakout on Volume Burst": return volumeConfirmed && isBullishCandle;
                 case "Bearish Breakdown on Volume Burst": return volumeConfirmed && isBearishCandle;
+                case "Bullish Trend Continuation":
+                    // This driver is only active if:
+                    // 1. The established thesis is "Bullish".
+                    // 2. The current price is still above the price where the thesis was established.
+                    // 3. We still have confirming evidence (e.g., price is above VWAP).
+                    return r.ActiveThesis == "Bullish" &&
+                           r.LTP > r.ActiveThesisEntryPrice &&
+                           r.PriceVsVwapSignal == "Above VWAP";
+
+                case "Bearish Trend Continuation":
+                    return r.ActiveThesis == "Bearish" &&
+                           r.LTP < r.ActiveThesisEntryPrice &&
+                           r.PriceVsVwapSignal == "Below VWAP";
 
                 default: return false;
             }
