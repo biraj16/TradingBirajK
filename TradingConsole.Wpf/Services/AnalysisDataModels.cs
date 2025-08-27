@@ -34,6 +34,8 @@ namespace TradingConsole.Wpf.Services
         public long OpenInterest { get; set; }
         public decimal Vwap { get; set; }
         public decimal AnchoredVwap { get; set; }
+        public string SecurityId { get; set; } = string.Empty;
+        public TimeSpan Timeframe { get; set; }
         internal decimal CumulativePriceVolume { get; set; } = 0;
         internal long CumulativeVolume { get; set; } = 0;
 

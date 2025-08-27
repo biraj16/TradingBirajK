@@ -38,6 +38,9 @@ namespace TradingConsole.Wpf.Services.Analysis
         public ConcurrentDictionary<string, ConcurrentDictionary<TimeSpan, AtrState>> MultiTimeframeAtrState { get; } = new();
         public ConcurrentDictionary<string, ConcurrentDictionary<TimeSpan, ObvState>> MultiTimeframeObvState { get; } = new();
 
+        // --- NEW: A dictionary to hold the ticks for the *currently forming* candle for smoothing ---
+        public ConcurrentDictionary<string, ConcurrentDictionary<TimeSpan, List<TickData>>> FormingCandleTicks { get; } = new();
+
         // --- NEW: Added a dictionary to hold the queue of recent ticks for micro-flow analysis ---
         public ConcurrentDictionary<string, ConcurrentQueue<TickData>> RecentTicks { get; } = new();
 
@@ -72,6 +75,7 @@ namespace TradingConsole.Wpf.Services.Analysis
             MultiTimeframeRsiState[securityId] = new ConcurrentDictionary<TimeSpan, RsiState>();
             MultiTimeframeAtrState[securityId] = new ConcurrentDictionary<TimeSpan, AtrState>();
             MultiTimeframeObvState[securityId] = new ConcurrentDictionary<TimeSpan, ObvState>();
+            FormingCandleTicks[securityId] = new ConcurrentDictionary<TimeSpan, List<TickData>>(); // Initialize the new dictionary
             RecentTicks[securityId] = new ConcurrentQueue<TickData>(); // Initialize the tick queue
             IsInVolatilitySqueeze[securityId] = false;
 
@@ -90,6 +94,7 @@ namespace TradingConsole.Wpf.Services.Analysis
                 MultiTimeframeRsiState[securityId][tf] = new RsiState();
                 MultiTimeframeAtrState[securityId][tf] = new AtrState();
                 MultiTimeframeObvState[securityId][tf] = new ObvState();
+                FormingCandleTicks[securityId][tf] = new List<TickData>(); // Initialize the list for each timeframe
             }
         }
 

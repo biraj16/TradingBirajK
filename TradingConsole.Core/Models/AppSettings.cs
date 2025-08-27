@@ -53,7 +53,10 @@ namespace TradingConsole.Core.Models
         {
             TrendingBullDrivers = new ObservableCollection<SignalDriver>
             {
-                new SignalDriver("Confluence Momentum (Bullish)", 10),
+                // new SignalDriver("Confluence Momentum (Bullish)", 10),
+                new SignalDriver("Price above VWAP", 4),                  
+                new SignalDriver("5m EMA confirms bullish trend", 4),     
+                new SignalDriver("Institutional Intent is Bullish", 2),
                 new SignalDriver("Option Breakout Setup (Bullish)", 8),
                 new SignalDriver("True Acceptance Above Y-VAH", 5),
                 new SignalDriver("Institutional Intent is Bullish", 4),
@@ -68,7 +71,10 @@ namespace TradingConsole.Core.Models
 
             TrendingBearDrivers = new ObservableCollection<SignalDriver>
             {
-                new SignalDriver("Confluence Momentum (Bearish)", -10),
+                // new SignalDriver("Confluence Momentum (Bearish)", -10),
+                new SignalDriver("Price above VWAP", -4),
+                new SignalDriver("5m EMA confirms bullish trend", -4),
+                new SignalDriver("Institutional Intent is Bullish", -2),
                 new SignalDriver("Option Breakout Setup (Bearish)", -8),
                 new SignalDriver("True Acceptance Below Y-VAL", -5),
                 new SignalDriver("Institutional Intent is Bearish", -4),
@@ -117,7 +123,7 @@ namespace TradingConsole.Core.Models
             // --- ADDED: Initialization of the new Breakout drivers ---
             BreakoutBullishDrivers = new ObservableCollection<SignalDriver>
             {
-                new SignalDriver("Volume Burst on Breakout", 5),
+                new SignalDriver("Bullish Breakout on Volume Burst", 8),
                 new SignalDriver("IB breakout is extending", 4),
                 new SignalDriver("Confluence Momentum (Bullish)", 3),
                 new SignalDriver("OI confirms new longs", 2),
@@ -125,7 +131,7 @@ namespace TradingConsole.Core.Models
 
             BreakoutBearishDrivers = new ObservableCollection<SignalDriver>
             {
-                new SignalDriver("Volume Burst on Breakdown", -5),
+                new SignalDriver("Bearish Breakdown on Volume Burst", -8),
                 new SignalDriver("IB breakdown is extending", -4),
                 new SignalDriver("Confluence Momentum (Bearish)", -3),
                 new SignalDriver("OI confirms new shorts", -2),

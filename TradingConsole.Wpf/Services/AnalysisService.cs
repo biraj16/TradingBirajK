@@ -101,19 +101,29 @@ namespace TradingConsole.Wpf.Services
 
         private bool AggregateIntoCandle(DashboardInstrument instrument, TimeSpan timeframe)
         {
+            // Only add ticks that have traded volume
+            if (instrument.LastTradedQuantity > 0)
+            {
+                var formingTicks = _stateManager.FormingCandleTicks[instrument.SecurityId][timeframe];
+                formingTicks.Add(new TickData { Price = instrument.LTP, Volume = instrument.LastTradedQuantity });
+            }
+
             var candles = _stateManager.GetCandles(instrument.SecurityId, timeframe);
             if (candles == null) return false;
+
             var now = DateTime.UtcNow;
             var candleTimestamp = new DateTime(now.Ticks - (now.Ticks % timeframe.Ticks), now.Kind);
             var currentCandle = candles.LastOrDefault();
 
+            // This is the main condition to check if a new candle needs to be created
             if (currentCandle == null || currentCandle.Timestamp != candleTimestamp)
             {
-                // --- THE FIX: Only form a new candle if the market is actually open ---
+                // --- This block executes only once at the start of a new candle ---
+
+                // Don't form new candles if the market is closed
                 if (!IsMarketOpen())
                 {
-                    // If the market is closed, we don't want to create a new, invalid candle.
-                    // But we still allow the *last* candle to be updated with the final closing ticks.
+                    // Still allow the final candle to be updated with post-market ticks
                     if (currentCandle != null)
                     {
                         currentCandle.High = Math.Max(currentCandle.High, instrument.LTP);
@@ -126,6 +136,7 @@ namespace TradingConsole.Wpf.Services
                     return false; // Prevent a new candle from being formed.
                 }
 
+                // Process the last completed candle before creating the new one
                 if (currentCandle != null)
                 {
                     var priceState = _stateManager.MultiTimeframePriceEmaState[instrument.SecurityId][timeframe];
@@ -137,21 +148,43 @@ namespace TradingConsole.Wpf.Services
                     if (timeframe.TotalMinutes == 1) UpdateMarketProfileForCandle(instrument, currentCandle);
                 }
 
-                var newCandle = new Candle { Timestamp = candleTimestamp, Open = instrument.LTP, High = instrument.LTP, Low = instrument.LTP, Close = instrument.LTP, Volume = instrument.LastTradedQuantity, OpenInterest = (long)instrument.OpenInterest, Vwap = instrument.AvgTradePrice };
+                // Clear the tick list to start fresh for the new candle
+                _stateManager.FormingCandleTicks[instrument.SecurityId][timeframe].Clear();
+
+                // Create the new candle
+                var newCandle = new Candle
+                {
+                    Timestamp = candleTimestamp,
+                    Open = instrument.LTP,
+                    High = instrument.LTP,
+                    Low = instrument.LTP,
+                    Close = instrument.LTP,
+                    Volume = instrument.LastTradedQuantity,
+                    OpenInterest = (long)instrument.OpenInterest,
+                    Vwap = instrument.AvgTradePrice,
+                    // You need to pass the SecurityId and Timeframe to the candle
+                    // so the IndicatorService can find the right tick list later.
+                    SecurityId = instrument.SecurityId,
+                    Timeframe = timeframe
+                };
                 candles.Add(newCandle);
 
                 CandleUpdated?.Invoke(instrument.SecurityId, newCandle, timeframe);
-                return true;
+                return true; // Return true because a new candle was formed
             }
             else
             {
+                // --- This block executes for every tick within a forming candle ---
+
+                // Update the values of the currently forming candle
                 currentCandle.High = Math.Max(currentCandle.High, instrument.LTP);
                 currentCandle.Low = Math.Min(currentCandle.Low, instrument.LTP);
-                currentCandle.Close = instrument.LTP;
+                currentCandle.Close = instrument.LTP; // This will still hold the raw LTP
                 currentCandle.Volume += instrument.LastTradedQuantity;
                 currentCandle.OpenInterest = (long)instrument.OpenInterest;
+
                 CandleUpdated?.Invoke(instrument.SecurityId, currentCandle, timeframe);
-                return false;
+                return false; // Return false because no new candle was formed
             }
         }
 
@@ -311,33 +344,22 @@ namespace TradingConsole.Wpf.Services
         {
             bool isNiftyRelated = (instrument.InstrumentType == "INDEX" && instrument.Symbol == "Nifty 50") ||
                                   (instrument.InstrumentType == "FUTIDX" && instrument.UnderlyingSymbol == "NIFTY");
-            if (!isNiftyRelated)
-            {
-                return; // Exit if not a Nifty instrument
-            }
+            if (!isNiftyRelated) return;
+
             var istNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"));
             DateTime dateToFetch = GetPreviousTradingDay(istNow);
 
-            if (_stateManager.HistoricalMarketProfiles.GetValueOrDefault(instrument.SecurityId)?.Any(p => p.Date.Date == dateToFetch.Date) == true)
-            {
-                return;
-            }
+            if (_stateManager.HistoricalMarketProfiles.GetValueOrDefault(instrument.SecurityId)?.Any(p => p.Date.Date == dateToFetch.Date) == true) return;
 
             try
             {
                 DashboardInstrument instrumentForHistory = instrument;
-
                 if (instrument.InstrumentType == "INDEX")
                 {
                     var futureInstrument = _instrumentCache.Values.FirstOrDefault(i => i.IsFuture && i.UnderlyingSymbol == instrument.Symbol);
                     if (futureInstrument != null)
                     {
                         instrumentForHistory = futureInstrument;
-                        Debug.WriteLine($"[BackfillPrevDay] Found future {futureInstrument.DisplayName} for index {instrument.DisplayName}. Using it for historical profile.");
-                    }
-                    else
-                    {
-                        Debug.WriteLine($"[BackfillPrevDay] WARNING: Could not find a tracked future for index {instrument.DisplayName}. Profile will lack volume.");
                     }
                 }
 
@@ -358,16 +380,18 @@ namespace TradingConsole.Wpf.Services
 
                 for (int i = 0; i < historicalData.Open.Count; i++)
                 {
-                    var priceCandle = new Candle
+                    // --- THE FIX: Create a single, complete candle object with all data ---
+                    var candleData = new Candle
                     {
                         Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)historicalData.StartTime[i]).UtcDateTime,
                         Open = historicalData.Open[i],
                         High = historicalData.High[i],
                         Low = historicalData.Low[i],
-                        Close = historicalData.Close[i]
+                        Close = historicalData.Close[i],
+                        Volume = (long)historicalData.Volume[i]
                     };
-                    var volumeCandle = new Candle { Volume = (long)historicalData.Volume[i] };
-                    _signalGenerationService.UpdateMarketProfile(historicalProfile, priceCandle, volumeCandle);
+                    // --- THE FIX: Pass the complete candle for both price and volume context ---
+                    _signalGenerationService.UpdateMarketProfile(historicalProfile, candleData, candleData);
                 }
 
                 var profileDataToSave = historicalProfile.ToMarketProfileData();
@@ -394,10 +418,8 @@ namespace TradingConsole.Wpf.Services
         {
             bool isNiftyRelated = (instrument.InstrumentType == "INDEX" && instrument.Symbol == "Nifty 50") ||
                                   (instrument.InstrumentType == "FUTIDX" && instrument.UnderlyingSymbol == "NIFTY");
-            if (!isNiftyRelated)
-            {
-                return; // Exit the method if the instrument is not Nifty or Nifty Futures
-            }
+            if (!isNiftyRelated) return;
+
             if (_stateManager.MarketProfiles.TryGetValue(instrument.SecurityId, out var directProfile))
             {
                 directProfile.UpdateInitialBalance(lastClosedCandle);
@@ -418,15 +440,27 @@ namespace TradingConsole.Wpf.Services
 
                     if (matchingIndexCandle != null)
                     {
+                        // Correctly uses the futures candle for volume and index candle for price
                         _signalGenerationService.UpdateMarketProfile(indexProfile, matchingIndexCandle, lastClosedCandle);
                     }
                 }
             }
-            else // Handles INDEX instruments and any others not covered above
+            else // This handles the INDEX instrument
             {
-                if (_stateManager.MarketProfiles.TryGetValue(instrument.SecurityId, out var otherProfile))
+                if (_stateManager.MarketProfiles.TryGetValue(instrument.SecurityId, out var indexProfile))
                 {
-                    _signalGenerationService.UpdateMarketProfile(otherProfile, lastClosedCandle, lastClosedCandle);
+                    // For the index, find the corresponding futures candle for its volume data
+                    var future = _instrumentCache.Values.FirstOrDefault(i => i.IsFuture && i.UnderlyingSymbol == instrument.UnderlyingSymbol);
+                    if (future != null)
+                    {
+                        var futureCandles = _stateManager.GetCandles(future.SecurityId, TimeSpan.FromMinutes(1));
+                        var matchingFutureCandle = futureCandles?.FirstOrDefault(c => c.Timestamp == lastClosedCandle.Timestamp);
+                        if (matchingFutureCandle != null)
+                        {
+                            // Correctly uses the index candle (lastClosedCandle) for price and the future candle for volume
+                            _signalGenerationService.UpdateMarketProfile(indexProfile, lastClosedCandle, matchingFutureCandle);
+                        }
+                    }
                 }
             }
         }

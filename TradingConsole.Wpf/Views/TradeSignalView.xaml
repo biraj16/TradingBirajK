@@ -100,30 +100,29 @@
                     <StackPanel Grid.Column="0" VerticalAlignment="Center">
                         <TextBlock Style="{StaticResource HeaderStyle}" Text="CONVICTION SCORE"/>
                         <TextBlock Style="{StaticResource ValueStyle}" Text="{Binding ConvictionScore}"
-                                   Foreground="{Binding ConvictionScore, Converter={StaticResource ScoreToColorConverter}}"/>
+                   Foreground="{Binding ConvictionScore, Converter={StaticResource ScoreToColorConverter}}"/>
                         <TextBlock Text="{Binding FinalTradeSignal}" TextAlignment="Center" FontStyle="Italic" Margin="0,5,0,0" Foreground="LightGray"/>
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock Style="{StaticResource HeaderStyle}" Text="MARKET REGIME"/>
+                        <TextBlock Style="{StaticResource HeaderStyle}" Text="INTRADAY REGIME"/>
                         <TextBlock Text="{Binding MarketRegime}">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource ValueStyle}">
                                     <Setter Property="Foreground" Value="Orange"/>
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding MarketRegime}" Value="High Volatility">
+                                        <DataTrigger Binding="{Binding MarketRegime}" Value="Intraday Trend Up">
                                             <Setter Property="Foreground" Value="LimeGreen"/>
                                         </DataTrigger>
-                                        <DataTrigger Binding="{Binding MarketRegime}" Value="Low Volatility">
+                                        <DataTrigger Binding="{Binding MarketRegime}" Value="Intraday Trend Down">
                                             <Setter Property="Foreground" Value="Salmon"/>
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </TextBlock.Style>
                         </TextBlock>
-                        <TextBlock Text="Current market character" TextAlignment="Center" FontStyle="Italic" Margin="0,5,0,0" Foreground="LightGray"/>
+                        <TextBlock Text="Dynamic market character" TextAlignment="Center" FontStyle="Italic" Margin="0,5,0,0" Foreground="LightGray"/>
                     </StackPanel>
-
                     <StackPanel Grid.Column="2" VerticalAlignment="Center">
                         <TextBlock Style="{StaticResource HeaderStyle}" Text="IV RANK (90-Day)"/>
                         <TextBlock Text="{Binding IvRank, StringFormat='{}{0:F2}%'}">

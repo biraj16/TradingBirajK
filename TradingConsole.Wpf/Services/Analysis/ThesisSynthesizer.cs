@@ -28,19 +28,16 @@ namespace TradingConsole.Wpf.Services
         {
             if (result.InstrumentGroup != "INDEX") return;
 
-            // The flow is now refactored to handle transitional states
-            // 1. Determine the base thesis (Trending vs. Balancing)
             MarketThesis baseThesis = UpdateIntradayThesis(result);
 
-            // 2. Calculate confluence, which may refine the thesis into a breakout attempt
             var (bullDrivers, bearDrivers, conviction, isChoppy, finalThesis) = CalculateConfluenceScore(result, baseThesis);
-            result.MarketThesis = finalThesis; // Set the final, possibly refined, thesis
+            result.MarketThesis = finalThesis;
             result.BullishDrivers = bullDrivers;
             result.BearishDrivers = bearDrivers;
 
             if (_stateManager.CurrentMarketPhase == MarketPhase.Opening)
             {
-                conviction = (int)Math.Round(conviction * 0.5); // Reduce conviction by 50% during open
+                conviction = (int)Math.Round(conviction * 0.5); // Reduce conviction during open
             }
 
             conviction = ApplyTrendFilter(result, conviction);
@@ -86,7 +83,6 @@ namespace TradingConsole.Wpf.Services
 
         private int ApplyTrendFilter(AnalysisResult result, int currentConviction)
         {
-            // Define logical areas for pullbacks
             bool isAtSupport = result.CustomLevelSignal == "At Key Support" || result.DayRangeSignal == "Near Low" || result.VwapBandSignal == "At Lower Band";
             bool isAtResistance = result.CustomLevelSignal == "At Key Resistance" || result.DayRangeSignal == "Near High" || result.VwapBandSignal == "At Upper Band";
 
@@ -128,21 +124,20 @@ namespace TradingConsole.Wpf.Services
 
             var driversToEvaluate = new List<SignalDriver>();
 
-            switch (baseThesis)
+            // **IMPROVEMENT**: Use the dynamic MarketRegime to select the correct playbook (Trending vs. Range-Bound).
+            switch (r.MarketRegime)
             {
-                case MarketThesis.Bullish_Trend:
-                case MarketThesis.Bearish_Trend:
-                case MarketThesis.Bullish_Rotation:
-                case MarketThesis.Bearish_Rotation:
+                case "Intraday Trend Up":
+                case "Intraday Trend Down":
                     driversToEvaluate.AddRange(_settingsViewModel.Strategy.TrendingBullDrivers);
                     driversToEvaluate.AddRange(_settingsViewModel.Strategy.TrendingBearDrivers);
                     break;
-
-                case MarketThesis.Balancing:
+                case "Balancing":
+                default:
+                    // **IMPROVEMENT**: In a balancing market, we *only* use range-bound drivers.
+                    // This was the intentional change that reduced the line count.
                     driversToEvaluate.AddRange(_settingsViewModel.Strategy.RangeBoundBullishDrivers);
                     driversToEvaluate.AddRange(_settingsViewModel.Strategy.RangeBoundBearishDrivers);
-                    driversToEvaluate.AddRange(_settingsViewModel.Strategy.TrendingBullDrivers);
-                    driversToEvaluate.AddRange(_settingsViewModel.Strategy.TrendingBearDrivers);
                     break;
             }
 
@@ -221,6 +216,11 @@ namespace TradingConsole.Wpf.Services
 
         private bool IsSignalActive(AnalysisResult r, string driverName)
         {
+            var fiveMinCandles = _stateManager.GetCandles(r.SecurityId, TimeSpan.FromMinutes(5));
+            Candle? lastFiveMinCandle = fiveMinCandles?.LastOrDefault();
+            bool isBullishCandle = lastFiveMinCandle != null && lastFiveMinCandle.Close > lastFiveMinCandle.Open;
+            bool isBearishCandle = lastFiveMinCandle != null && lastFiveMinCandle.Close < lastFiveMinCandle.Open;
+
             bool isBullishPattern = r.CandleSignal5Min.Contains("Bullish");
             bool isBearishPattern = r.CandleSignal5Min.Contains("Bearish");
             bool atSupport = r.DayRangeSignal == "Near Low" || r.VwapBandSignal == "At Lower Band" || r.MarketProfileSignal.Contains("VAL");
@@ -230,25 +230,12 @@ namespace TradingConsole.Wpf.Services
 
             switch (driverName)
             {
-                // --- NEW CASES ADDED ---
-                case "Aggressive Buying Pressure":
-                    return r.MicroFlowSignal == "Aggressive Buying";
-                case "Aggressive Selling Pressure":
-                    return r.MicroFlowSignal == "Aggressive Selling";
+                case "Aggressive Buying Pressure": return r.MicroFlowSignal == "Aggressive Buying";
+                case "Aggressive Selling Pressure": return r.MicroFlowSignal == "Aggressive Selling";
 
-                // Confluence Signals
-                case "Confluence Momentum (Bullish)":
-                    return r.PriceVsVwapSignal == "Above VWAP" && r.EmaSignal5Min == "Bullish Cross" && r.InstitutionalIntent.Contains("Bullish");
-                case "Confluence Momentum (Bearish)":
-                    return r.PriceVsVwapSignal == "Below VWAP" && r.EmaSignal5Min == "Bearish Cross" && r.InstitutionalIntent.Contains("Bearish");
+                case "Option Breakout Setup": return r.VolatilityStateSignal == "IV Squeeze Setup";
+                case "Range Contraction": return r.AtrSignal5Min == "Vol Contracting";
 
-                // Volatility Signals
-                case "Option Breakout Setup":
-                    return r.VolatilityStateSignal == "IV Squeeze Setup";
-                case "Range Contraction":
-                    return r.AtrSignal5Min == "Vol Contracting";
-
-                // Market Profile Signals
                 case "True Acceptance Above Y-VAH": return r.MarketProfileSignal == "True Acceptance Above Y-VAH";
                 case "True Acceptance Below Y-VAL": return r.MarketProfileSignal == "True Acceptance Below Y-VAL";
                 case "Look Above and Fail at Y-VAH": return r.MarketProfileSignal == "Look Above and Fail at Y-VAH";
@@ -258,9 +245,10 @@ namespace TradingConsole.Wpf.Services
                 case "IB breakout is extending": return r.InitialBalanceSignal == "IB Extension Up";
                 case "IB breakdown is extending": return r.InitialBalanceSignal == "IB Extension Down";
 
-                // Standard Trend Signals
                 case "Price above VWAP": return r.PriceVsVwapSignal == "Above VWAP";
                 case "Price below VWAP": return r.PriceVsVwapSignal == "Below VWAP";
+                case "5m EMA confirms bullish trend": return r.EmaSignal5Min == "Bullish Cross";
+                case "5m EMA confirms bearish trend": return r.EmaSignal5Min == "Bearish Cross";
                 case "5m VWAP EMA confirms bullish trend": return r.VwapEmaSignal5Min == "Bullish Cross";
                 case "5m VWAP EMA confirms bearish trend": return r.VwapEmaSignal5Min == "Bearish Cross";
                 case "OI confirms new longs": return r.OiSignal == "Long Buildup";
@@ -270,7 +258,6 @@ namespace TradingConsole.Wpf.Services
                 case "Institutional Intent is Bullish": return r.InstitutionalIntent.Contains("Bullish");
                 case "Institutional Intent is Bearish": return r.InstitutionalIntent.Contains("Bearish");
 
-                // Context-Aware Signals
                 case "Bullish Pattern with Volume Confirmation": return isBullishPattern && volumeConfirmed;
                 case "Bearish Pattern with Volume Confirmation": return isBearishPattern && volumeConfirmed;
                 case "Bullish Pattern at Key Support": return isBullishPattern && atSupport;
@@ -281,12 +268,12 @@ namespace TradingConsole.Wpf.Services
                 case "Bearish OBV Div at range high": return r.ObvDivergenceSignal5Min.Contains("Bearish") && atResistance && isNotInStrongTrend;
                 case "Bullish RSI Div at range low": return r.RsiSignal5Min.Contains("Bullish") && atSupport && isNotInStrongTrend;
                 case "Bearish RSI Div at range high": return r.RsiSignal5Min.Contains("Bearish") && atResistance && isNotInStrongTrend;
-                case "Low volume suggests exhaustion (Bullish)": return r.VolumeSignal != "Volume Burst" && r.AtrSignal5Min == "Vol Contracting" && r.DayRangeSignal == "Near Low";
-                case "Low volume suggests exhaustion (Bearish)": return r.VolumeSignal != "Volume Burst" && r.AtrSignal5Min == "Vol Contracting" && r.DayRangeSignal == "Near High";
+                case "Low volume suggests exhaustion (Bullish)": return !volumeConfirmed && r.AtrSignal5Min == "Vol Contracting" && r.DayRangeSignal == "Near Low";
+                case "Low volume suggests exhaustion (Bearish)": return !volumeConfirmed && r.AtrSignal5Min == "Vol Contracting" && r.DayRangeSignal == "Near High";
 
-                // Breakout playbook drivers
-                case "Volume Burst on Breakout": return r.VolumeSignal == "Volume Burst" && r.PriceVsVwapSignal == "Above VWAP";
-                case "Volume Burst on Breakdown": return r.VolumeSignal == "Volume Burst" && r.PriceVsVwapSignal == "Below VWAP";
+                // **IMPROVEMENT**: Robust logic for Volume Burst, independent of VWAP.
+                case "Bullish Breakout on Volume Burst": return volumeConfirmed && isBullishCandle;
+                case "Bearish Breakdown on Volume Burst": return volumeConfirmed && isBearishCandle;
 
                 default: return false;
             }

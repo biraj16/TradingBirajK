@@ -83,26 +83,26 @@ namespace TradingConsole.Wpf.Services
             if (oneMinCandles != null && oneMinCandles.Any())
             {
                 var priceState1m = _stateManager.MultiTimeframePriceEmaState[instrumentForAnalysis.SecurityId][TimeSpan.FromMinutes(1)];
-                result.EmaSignal1Min = _indicatorService.CalculateEmaSignal(oneMinCandles, priceState1m, _settingsViewModel.ShortEmaLength, _settingsViewModel.LongEmaLength, false);
+                result.EmaSignal1Min = _indicatorService.CalculateEmaSignal(oneMinCandles, priceState1m, _settingsViewModel.ShortEmaLength, _settingsViewModel.LongEmaLength, false, instrumentForAnalysis);
 
                 var vwapState1m = _stateManager.MultiTimeframeVwapEmaState[instrumentForAnalysis.SecurityId][TimeSpan.FromMinutes(1)];
-                result.VwapEmaSignal1Min = _indicatorService.CalculateEmaSignal(oneMinCandles, vwapState1m, _settingsViewModel.ShortEmaLength, _settingsViewModel.LongEmaLength, true);
+                result.VwapEmaSignal1Min = _indicatorService.CalculateEmaSignal(oneMinCandles, vwapState1m, _settingsViewModel.ShortEmaLength, _settingsViewModel.LongEmaLength, true, instrumentForAnalysis);
             }
             if (fiveMinCandles != null && fiveMinCandles.Any())
             {
                 var priceState5m = _stateManager.MultiTimeframePriceEmaState[instrumentForAnalysis.SecurityId][TimeSpan.FromMinutes(5)];
-                result.EmaSignal5Min = _indicatorService.CalculateEmaSignal(fiveMinCandles, priceState5m, _settingsViewModel.ShortEmaLength, _settingsViewModel.LongEmaLength, false);
+                result.EmaSignal5Min = _indicatorService.CalculateEmaSignal(fiveMinCandles, priceState5m, _settingsViewModel.ShortEmaLength, _settingsViewModel.LongEmaLength, false, instrumentForAnalysis);
 
                 var vwapState5m = _stateManager.MultiTimeframeVwapEmaState[instrumentForAnalysis.SecurityId][TimeSpan.FromMinutes(5)];
-                result.VwapEmaSignal5Min = _indicatorService.CalculateEmaSignal(fiveMinCandles, vwapState5m, _settingsViewModel.ShortEmaLength, _settingsViewModel.LongEmaLength, true);
+                result.VwapEmaSignal5Min = _indicatorService.CalculateEmaSignal(fiveMinCandles, vwapState5m, _settingsViewModel.ShortEmaLength, _settingsViewModel.LongEmaLength, true, instrumentForAnalysis);
             }
             if (fifteenMinCandles != null && fifteenMinCandles.Any())
             {
                 var priceState15m = _stateManager.MultiTimeframePriceEmaState[instrumentForAnalysis.SecurityId][TimeSpan.FromMinutes(15)];
-                result.EmaSignal15Min = _indicatorService.CalculateEmaSignal(fifteenMinCandles, priceState15m, _settingsViewModel.ShortEmaLength, _settingsViewModel.LongEmaLength, false);
+                result.EmaSignal15Min = _indicatorService.CalculateEmaSignal(fifteenMinCandles, priceState15m, _settingsViewModel.ShortEmaLength, _settingsViewModel.LongEmaLength, false, instrumentForAnalysis);
 
                 var vwapState15m = _stateManager.MultiTimeframeVwapEmaState[instrumentForAnalysis.SecurityId][TimeSpan.FromMinutes(15)];
-                result.VwapEmaSignal15Min = _indicatorService.CalculateEmaSignal(fifteenMinCandles, vwapState15m, _settingsViewModel.ShortEmaLength, _settingsViewModel.LongEmaLength, true);
+                result.VwapEmaSignal15Min = _indicatorService.CalculateEmaSignal(fifteenMinCandles, vwapState15m, _settingsViewModel.ShortEmaLength, _settingsViewModel.LongEmaLength, true, instrumentForAnalysis);
             }
 
             if (oneMinCandles != null && oneMinCandles.Any())
@@ -171,6 +171,8 @@ namespace TradingConsole.Wpf.Services
                 result.IvSkewSignal = CalculateIvSkewSignal(instrument, optionChain);
             }
         }
+
+        #region Signal Calculation Logic
 
         private (decimal avgIv, string ivSignal) CalculateIvSignal(decimal currentIv, List<decimal> ivHistory)
         {
@@ -336,8 +338,6 @@ namespace TradingConsole.Wpf.Services
                 result.IvPercentile = ivPercentile;
             }
         }
-
-        #region Signal Calculation Logic
 
         private void RunMarketProfileAnalysis(DashboardInstrument instrument, MarketProfile currentProfile, AnalysisResult result, List<Candle>? oneMinCandles)
         {

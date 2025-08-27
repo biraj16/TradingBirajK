@@ -1,6 +1,5 @@
 ﻿// TradingConsole.Wpf/Services/Analysis/IndicatorService.cs
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using TradingConsole.Core.Models;
@@ -8,9 +7,6 @@ using TradingConsole.Wpf.Services.Analysis;
 
 namespace TradingConsole.Wpf.Services
 {
-    /// <summary>
-    /// Handles the calculation of all technical indicators like EMA, RSI, ATR, OBV.
-    /// </summary>
     public class IndicatorService
     {
         private readonly AnalysisStateManager _stateManager;
@@ -20,19 +16,40 @@ namespace TradingConsole.Wpf.Services
             _stateManager = stateManager;
         }
 
-        // --- NEW METHOD: This is now the ONLY method that modifies the persistent EMA state. ---
-        /// <summary>
-        /// Updates the persistent EMA state using the closing price of a completed candle.
-        /// </summary>
+        private decimal GetSmoothedLivePrice(DashboardInstrument instrument, TimeSpan timeframe)
+        {
+            var ticks = _stateManager.FormingCandleTicks[instrument.SecurityId][timeframe];
+            if (ticks == null || !ticks.Any())
+            {
+                var candles = _stateManager.GetCandles(instrument.SecurityId, timeframe);
+                return candles?.LastOrDefault()?.Close ?? 0;
+            }
+
+            decimal cumulativePriceVolume = 0;
+            long cumulativeVolume = 0;
+
+            foreach (var tick in ticks)
+            {
+                cumulativePriceVolume += tick.Price * tick.Volume;
+                cumulativeVolume += tick.Volume;
+            }
+
+            if (cumulativeVolume > 0)
+            {
+                return cumulativePriceVolume / cumulativeVolume;
+            }
+
+            return ticks.Average(t => t.Price);
+        }
+
         public void UpdateEmaState(Candle closedCandle, EmaState state, int shortEma, int longEma, bool useVwap)
         {
             var price = useVwap ? closedCandle.Vwap : closedCandle.Close;
-            if (price == 0) return; // Do not update state with invalid data
+            if (price == 0) return;
 
             decimal shortMultiplier = 2.0m / (shortEma + 1);
             decimal longMultiplier = 2.0m / (longEma + 1);
 
-            // If state is uninitialized, this single candle won't be enough, but we can start the process
             if (state.CurrentShortEma == 0) state.CurrentShortEma = price;
             if (state.CurrentLongEma == 0) state.CurrentLongEma = price;
 
@@ -40,25 +57,18 @@ namespace TradingConsole.Wpf.Services
             state.CurrentLongEma = (price - state.CurrentLongEma) * longMultiplier + state.CurrentLongEma;
         }
 
-        // --- REVISED METHOD: This method NO LONGER MODIFIES THE STATE. ---
-        /// <summary>
-        /// Calculates a real-time signal based on the last stable EMA state and the current live price.
-        /// </summary>
-        public string CalculateEmaSignal(List<Candle> candles, EmaState state, int shortEma, int longEma, bool useVwap)
+        public string CalculateEmaSignal(List<Candle> candles, EmaState state, int shortEma, int longEma, bool useVwap, DashboardInstrument instrument)
         {
             if (!candles.Any()) return "Building History...";
 
-            // Use the last known stable state.
             var baseShortEma = state.CurrentShortEma;
             var baseLongEma = state.CurrentLongEma;
 
             if (baseShortEma == 0 || baseLongEma == 0) return "Warming Up...";
 
-            // Use the live price of the currently forming candle for a real-time signal.
-            var livePrice = useVwap ? candles.Last().Vwap : candles.Last().Close;
+            var livePrice = GetSmoothedLivePrice(instrument, candles.First().Timeframe);
             if (livePrice == 0) return "Awaiting Price...";
 
-            // Calculate temporary, "live" EMA values without saving them.
             decimal liveShortEma = (livePrice - baseShortEma) * (2.0m / (shortEma + 1)) + baseShortEma;
             decimal liveLongEma = (livePrice - baseLongEma) * (2.0m / (longEma + 1)) + baseLongEma;
 
@@ -277,12 +287,10 @@ namespace TradingConsole.Wpf.Services
             state.ObvValues.Add(state.CurrentObv);
             if (state.ObvValues.Count > 50) state.ObvValues.RemoveAt(0);
 
-            // --- THE FIX: Calculate the OBV Moving Average ---
-            if (state.ObvValues.Count >= 20) // Use the period from settings
+            if (state.ObvValues.Count >= 20)
             {
                 state.CurrentMovingAverage = state.ObvValues.TakeLast(20).Average();
             }
-            // ---------------------------------------------
 
             return state.CurrentObv;
         }

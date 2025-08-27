@@ -197,7 +197,7 @@ namespace TradingConsole.Wpf.ViewModels
             Dashboard = new DashboardViewModel();
             Portfolio = new PortfolioViewModel();
             Portfolio.PropertyChanged += Portfolio_PropertyChanged;
-           
+
             _analysisService = new AnalysisService(Settings, _apiClient, _scripMasterService, _historicalIvService, _marketProfileService, _indicatorStateService, _signalLoggerService, _notificationService, Dashboard, this);
             _performanceService = new PerformanceService(Portfolio, _analysisService);
             _autoTraderService = new AutoTraderService(this, _scripMasterService, _apiClient, Settings, _notificationService);
@@ -274,6 +274,7 @@ namespace TradingConsole.Wpf.ViewModels
 
         #region Command Methods
 
+        // **FIX for CS1998**: Removed 'async' keyword as there are no 'await' calls.
         private void ExecuteShowMtmGraph(object? parameter)
         {
             try
@@ -707,6 +708,7 @@ namespace TradingConsole.Wpf.ViewModels
             }
         }
 
+        // **FIX for CS4014**: Added 'await' to ensure sequential startup and added try-catch for safety.
         private async void OnWebSocketConnected()
         {
             try
@@ -930,25 +932,33 @@ namespace TradingConsole.Wpf.ViewModels
         {
             Application.Current.Dispatcher.InvokeAsync(async () =>
             {
-                var orderToUpdate = Orders.FirstOrDefault(o => o.OrderId == updatedOrder.OrderId);
-                if (orderToUpdate != null)
+                try
                 {
-                    orderToUpdate.OrderStatus = updatedOrder.OrderStatus;
-                    orderToUpdate.FilledQuantity = updatedOrder.FilledQuantity;
-                    orderToUpdate.UpdateTime = updatedOrder.UpdateTime;
-                    orderToUpdate.AverageTradedPrice = updatedOrder.AverageTradedPrice;
+                    var orderToUpdate = Orders.FirstOrDefault(o => o.OrderId == updatedOrder.OrderId);
+                    if (orderToUpdate != null)
+                    {
+                        orderToUpdate.OrderStatus = updatedOrder.OrderStatus;
+                        orderToUpdate.FilledQuantity = updatedOrder.FilledQuantity;
+                        orderToUpdate.UpdateTime = updatedOrder.UpdateTime;
+                        orderToUpdate.AverageTradedPrice = updatedOrder.AverageTradedPrice;
 
-                    await UpdateStatusAsync($"Order {updatedOrder.OrderId} updated: {updatedOrder.OrderStatus}");
-                }
-                else
-                {
-                    Orders.Insert(0, updatedOrder);
-                    await UpdateStatusAsync($"New order received: {updatedOrder.OrderId}");
-                }
+                        await UpdateStatusAsync($"Order {updatedOrder.OrderId} updated: {updatedOrder.OrderStatus}");
+                    }
+                    else
+                    {
+                        Orders.Insert(0, updatedOrder);
+                        await UpdateStatusAsync($"New order received: {updatedOrder.OrderId}");
+                    }
 
-                if (updatedOrder.OrderStatus == "TRADED")
+                    if (updatedOrder.OrderStatus == "TRADED")
+                    {
+                        await LoadPortfolioAsync();
+                    }
+                }
+                catch (Exception ex)
                 {
-                    await LoadPortfolioAsync();
+                    Debug.WriteLine($"Error processing order update: {ex.Message}");
+                    await UpdateStatusAsync("Error processing order update.");
                 }
             });
         }
@@ -1011,19 +1021,22 @@ namespace TradingConsole.Wpf.ViewModels
                                 UnderlyingPreviousClose = instrumentToUpdate.Close;
                             });
                         }
-                        if (_optionScripMap.TryGetValue(securityId, out var optionDetails))
+
+                        // **FIX for CS8604**: Added a null check before using securityId as a key.
+                        if (!string.IsNullOrEmpty(securityId) && _optionScripMap.TryGetValue(securityId, out var optionDetails))
                         {
                             optionDetails.LTP = instrumentToUpdate.LTP;
                             optionDetails.Volume = instrumentToUpdate.Volume;
                             optionDetails.OI = instrumentToUpdate.OpenInterest;
                         }
-                        if (_openPositionsMap.TryGetValue(securityId, out var openPositionToUpdate))
+
+                        if (!string.IsNullOrEmpty(securityId) && _openPositionsMap.TryGetValue(securityId, out var openPositionToUpdate))
                         {
                             openPositionToUpdate.LastTradedPrice = instrumentToUpdate.LTP;
                         }
-                        if (instrumentToUpdate.InstrumentType == "INDEX" && !_dashboardOptionsLoadedFor.Contains(securityId))
+                        if (instrumentToUpdate.InstrumentType == "INDEX" && !_dashboardOptionsLoadedFor.Contains(instrumentToUpdate.SecurityId))
                         {
-                            _dashboardOptionsLoadedFor.Add(securityId);
+                            _dashboardOptionsLoadedFor.Add(instrumentToUpdate.SecurityId);
                             _ = LoadDashboardOptionsForIndexAsync(instrumentToUpdate, instrumentToUpdate.LTP);
                         }
 
@@ -1189,11 +1202,13 @@ namespace TradingConsole.Wpf.ViewModels
         {
             try
             {
+                // **FIX for CS8602**: Used null-conditional operator '?.' for safe access.
                 await UpdateStatusAsync($"Fetching option chain for {SelectedIndex?.Name ?? "Selected Index"} - {SelectedExpiry}...");
                 var optionChainResponse = await _apiClient.GetOptionChainAsync(apiSecurityId, apiSegment, SelectedExpiry!);
 
                 if (optionChainResponse?.Data?.OptionChain == null)
                 {
+                    // **FIX for CS8602**: Used null-conditional operator '?.' for safe access.
                     await UpdateStatusAsync($"Failed to load option chain for {SelectedIndex?.Name ?? "Selected Index"} - {SelectedExpiry}.");
                     return;
                 }
@@ -1226,6 +1241,7 @@ namespace TradingConsole.Wpf.ViewModels
                 int endIndex = Math.Min(allStrikes.Count - 1, atmIndex + displayRange);
 
                 var strikesToDisplay = allStrikes.Skip(startIndex).Take(endIndex - startIndex + 1).ToList();
+                // **FIX for CS8602**: Used null-conditional operator '?.' for safe access.
                 string scripMasterUnderlying = GetUnderlyingSymbolForScripMaster(SelectedIndex?.Name ?? string.Empty);
 
                 foreach (var strikeInfo in strikesToDisplay)
@@ -1266,6 +1282,7 @@ namespace TradingConsole.Wpf.ViewModels
                 {
                     await _webSocketClient.SubscribeToInstrumentsAsync(newSubscriptions, 17);
                 }
+                // **FIX for CS8602**: Used null-conditional operator '?.' for safe access.
                 await UpdateStatusAsync($"Option chain for {SelectedIndex?.Name ?? "Selected Index"} - {SelectedExpiry} loaded.");
             }
             catch (DhanApiException ex)
@@ -1540,6 +1557,7 @@ namespace TradingConsole.Wpf.ViewModels
                                     rowToUpdate.PutOption.PreviousClose = strikeData.PutOption.PreviousClose;
                                 }
 
+                                // **FIX for CS8629**: Added .HasValue check before comparing.
                                 if (atmStrike.HasValue)
                                 {
                                     rowToUpdate.IsAtm = rowToUpdate.StrikePrice == atmStrike.Value;
